@@ -868,17 +868,6 @@ function App() {
       <h2>소비 내역 입력</h2>
 
       <div style={rowStyle}>
-        <label style={labelStyle}>조회 월</label>
-        <input
-          type="month"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-        />
-      </div>
-
-      <button onClick={handleDownloadCSV}>선택 월 CSV 다운로드</button>
-
-      <div style={rowStyle}>
         <label style={labelStyle}>소비 날짜</label>
         <input
           type="date"
@@ -961,6 +950,17 @@ function App() {
           ))}
         </ul>
       )}
+
+      <div style={rowStyle}>
+        <label style={labelStyle}>조회 월</label>
+        <input
+          type="month"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+        />
+      </div>
+
+      <button onClick={handleDownloadCSV}>선택 월 CSV 다운로드</button>
 
       <hr />
 
