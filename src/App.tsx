@@ -291,74 +291,140 @@ function App() {
   const extractAmountFromText = (fullText: string) => {
     const compactText = normalizeText(fullText);
 
-    const keywordPatterns = [
-      /총\s*구\s*매\s*액/i,
-      /총\s*구매\s*금액/i,
-      /내\s*실\s*금\s*액/i,
-      /결\s*제\s*금\s*액/i,
-      /승\s*인\s*금\s*액/i,
-      /받\s*을\s*금\s*액/i,
-      /합\s*계/i,
-    ];
+    const cleanAmount = (value: string) => Number(value.replace(/[^\d]/g, ""));
+
+    const isValidAmount = (num: number) => {
+      if (num < 1000) return false;
+      if (num > MAX_AMOUNT) return false;
+
+      // 사업자번호, 전화번호, 승인번호처럼 너무 긴 숫자 제거
+      if (String(num).length >= 8) return false;
+
+      return true;
+    };
 
     const amountRegex = /[₩￦Ww]?\s*\d{1,3}\s*(?:[,.]\s*|\s+)\d{3}/g;
 
-    for (const keywordPattern of keywordPatterns) {
-      const matchKeyword = fullText.match(keywordPattern);
+    const findAmountsNearKeyword = (
+      targetText: string,
+      keywordPattern: RegExp,
+      range = 120
+    ) => {
+      const matchKeyword = targetText.match(keywordPattern);
 
-      if (matchKeyword && matchKeyword.index !== undefined) {
-        const nearText = fullText.slice(matchKeyword.index, matchKeyword.index + 80);
-        const matches = nearText.match(amountRegex);
+      if (!matchKeyword || matchKeyword.index === undefined) {
+        return [];
+      }
 
-        if (matches && matches.length > 0) {
-          const firstAmount = matches[0];
-          return firstAmount.replace(/[^\d]/g, "");
-        }
+      const start = Math.max(0, matchKeyword.index - 20);
+      const end = matchKeyword.index + range;
+      const nearText = targetText.slice(start, end);
+
+      return (nearText.match(amountRegex) || [])
+        .map(cleanAmount)
+        .filter(isValidAmount);
+    };
+
+    // 1순위: 실제 결제 금액을 의미하는 키워드
+    const paymentKeywordPatterns = [
+      /받\s*을\s*금\s*액/i,
+      /받\s*은\s*금\s*액/i,
+      /결\s*제\s*금\s*액/i,
+      /승\s*인\s*금\s*액/i,
+      /청\s*구\s*금\s*액/i,
+      /총\s*결\s*제\s*금\s*액/i,
+      /카\s*드\s*결\s*제/i,
+      /신\s*용\s*카\s*드/i,
+    ];
+
+    for (const keywordPattern of paymentKeywordPatterns) {
+      const amounts = findAmountsNearKeyword(fullText, keywordPattern, 160);
+
+      if (amounts.length > 0) {
+        return String(Math.max(...amounts));
       }
     }
 
-    const compactKeywordPatterns = [
-      "총구매액",
-      "총구매금액",
-      "내실금액",
-      "결제금액",
-      "승인금액",
-      "받을금액",
-      "합계",
+    // 2순위: 합계/소계 계열 키워드
+    const totalKeywordPatterns = [
+      /합\s*계\s*금\s*액/i,
+      /합\s*계/i,
+      /총\s*구\s*매\s*액/i,
+      /총\s*구매\s*금액/i,
+      /소\s*계/i,
+      /총\s*액/i,
     ];
 
-    for (const keyword of compactKeywordPatterns) {
+    for (const keywordPattern of totalKeywordPatterns) {
+      const amounts = findAmountsNearKeyword(fullText, keywordPattern, 120);
+
+      if (amounts.length > 0) {
+        return String(Math.max(...amounts));
+      }
+    }
+
+    // 3순위: 압축 텍스트에서 키워드 근처 탐색
+    const compactKeywords = [
+      "받을금액",
+      "받은금액",
+      "결제금액",
+      "승인금액",
+      "청구금액",
+      "총결제금액",
+      "카드결제",
+      "신용카드",
+      "합계금액",
+      "합계",
+      "총구매액",
+      "총구매금액",
+      "소계",
+      "총액",
+    ];
+
+    for (const keyword of compactKeywords) {
       const idx = compactText.indexOf(keyword);
 
       if (idx !== -1) {
-        const nearText = compactText.slice(idx, idx + 60);
-        const match = nearText.match(/[₩￦Ww]?\d{1,3}[,.]\d{3}/);
+        const nearText = compactText.slice(idx, idx + 100);
+        const matches = nearText.match(/[₩￦Ww]?\d{1,3}[,.]\d{3}/g);
 
-        if (match) {
-          return match[0].replace(/[^\d]/g, "");
+        const amounts = (matches || [])
+          .map(cleanAmount)
+          .filter(isValidAmount);
+
+        if (amounts.length > 0) {
+          return String(Math.max(...amounts));
         }
       }
     }
 
+    // 4순위: 전체 금액 후보 중 현실적인 결제 금액만 선택
     const candidates =
-      fullText.match(amountRegex)?.map((value) => Number(value.replace(/[^\d]/g, ""))) || [];
+      fullText.match(amountRegex)?.map(cleanAmount).filter(isValidAmount) || [];
 
-    const validCandidates = candidates.filter((num) => num >= 1000 && num <= MAX_AMOUNT);
+    if (candidates.length === 0) return "";
 
-    if (validCandidates.length === 0) return "";
-
-    return String(Math.max(...validCandidates));
+    return String(Math.max(...candidates));
   };
 
   const extractDateFromText = (fullText: string) => {
     const dateMatch =
       fullText.match(/\d{4}[./-]\d{1,2}[./-]\d{1,2}/) ||
-      fullText.match(/\d{4}년\s*\d{1,2}월\s*\d{1,2}일/) ||
-      fullText.match(/\d{2}[./-]\d{1,2}[./-]\d{1,2}/);
+    fullText.match(/\d{4}년\s*\d{1,2}월\s*\d{1,2}일/) ||
+    fullText.match(/20\d{6}(?=[\s-])/) ||
+    fullText.match(/\d{2}[./-]\d{1,2}[./-]\d{1,2}/);
 
     if (!dateMatch) return "";
 
     const rawDate = dateMatch[0];
+
+    if (/^\d{8}$/.test(rawDate)) {
+      const year = rawDate.slice(0, 4);
+      const month = rawDate.slice(4, 6);
+      const day = rawDate.slice(6, 8);
+
+      return `${year}-${month}-${day}`;
+    }
 
     if (rawDate.includes("년")) {
       const parts = rawDate.match(/\d+/g);
@@ -426,7 +492,8 @@ function App() {
       compactText.includes("김밥") ||
       compactText.includes("치킨") ||
       compactText.includes("피자") ||
-      compactText.includes("푸드")
+      compactText.includes("푸드") ||
+      compactText.includes("분식")
     ) {
       return "식비";
     }
@@ -438,7 +505,8 @@ function App() {
       compactText.includes("무신사") ||
       compactText.includes("지그재그") ||
       compactText.includes("에이블리") ||
-      compactText.includes("스토어")
+      compactText.includes("스토어") ||
+      compactText.includes("쇼핑")
     ) {
       return "쇼핑";
     }
@@ -738,8 +806,8 @@ function App() {
 
   return (
     <div style={{ padding: "40px", fontFamily: "Arial, sans-serif" }}>
-      <h1>AI 금융코치 앱</h1>
-      <p>소비패턴 분석 기반 개인 맞춤형 저축/카드 추천 서비스</p>
+      <h1>스마트 소비 관리 서비스</h1>
+      <p>영수증 OCR과 소비 분석을 통해 맞춤형 절약 피드백을 제공하는 서비스</p>
 
       <hr />
 
@@ -810,6 +878,13 @@ function App() {
           <p>
             <strong>OCR 인식 날짜:</strong> {ocrResult.date}
           </p>
+
+          {ocrResult.category === "기타" && (
+            <p style={{ color: "orange" }}>
+              등록되지 않은 상호명이라 카테고리를 자동 분류하지 못했습니다.
+              날짜와 금액은 인식되었으므로 필요한 경우 카테고리만 직접 수정해주세요.
+            </p>
+          )}
 
           <div style={rowStyle}>
             <label style={labelStyle}>날짜 수정</label>
@@ -951,16 +1026,18 @@ function App() {
         </ul>
       )}
 
-      <div style={rowStyle}>
-        <label style={labelStyle}>조회 월</label>
-        <input
-          type="month"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-        />
-      </div>
+      <div style={{ marginTop: "20px" }}>
+        <div style={rowStyle}>
+          <label style={labelStyle}>조회 월</label>
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+          />
+        </div>
 
-      <button onClick={handleDownloadCSV}>선택 월 CSV 다운로드</button>
+        <button onClick={handleDownloadCSV}>선택 월 CSV 다운로드</button>
+      </div>
 
       <hr />
 
