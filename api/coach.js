@@ -1,5 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 
+const gemini = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ message: "POST만 가능합니다." });
@@ -11,10 +15,6 @@ export default async function handler(req, res) {
         message: "GEMINI_API_KEY가 설정되지 않았습니다.",
       });
     }
-
-    const gemini = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-    });
 
     const {
       nickname,
@@ -72,7 +72,7 @@ ${JSON.stringify(recommendedCards, null, 2)}
 `;
 
     const result = await gemini.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
     });
 
@@ -87,7 +87,7 @@ ${JSON.stringify(recommendedCards, null, 2)}
     console.error("Gemini error:", error);
 
     return res.status(500).json({
-      message: error?.message || "Gemini 생성 실패",
+      message: "Gemini 생성 실패",
     });
   }
 }
