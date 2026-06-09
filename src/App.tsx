@@ -748,7 +748,7 @@ function App() {
       const formData = new FormData();
       formData.append("image", receiptFile);
 
-      const response = await fetch("http://localhost:4000/api/ocr", {
+      const response = await fetch("/api/ocr", {
         method: "POST",
         body: formData,
       });
@@ -892,7 +892,7 @@ function App() {
     setErrorMessage("");
 
     try {
-      const response = await fetch("http://localhost:4000/api/coach", {
+      const response = await fetch("/api/coach", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
